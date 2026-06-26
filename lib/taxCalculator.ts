@@ -7,6 +7,9 @@ export interface UserInput {
   monthlySavings: number;
   existingPension: number;
   employmentType: 'employee' | 'self-employed';
+  // 금융소득
+  annualInterestIncome: number;   // 이자소득 (연간)
+  annualDividendIncome: number;   // 배당소득 (연간)
 }
 
 export interface TaxResult {
@@ -25,6 +28,12 @@ export interface TaxResult {
   employmentInsurance: number;
   totalDeductions: number;
   netMonthlyIncome: number;
+  // 금융소득 종합과세
+  financialIncome: number;
+  isFinancialIncomeSubjectToGlobal: boolean;
+  financialIncomeTax: number;
+  financialIncomeWithheld: number;
+  financialIncomeSurcharge: number;
 }
 
 export interface PensionStrategy {
@@ -57,6 +66,12 @@ const INCOME_TAX_BRACKETS = [
   { min: 1000000000, max: Infinity, rate: 0.45, deduction: 65940000 },
 ];
 
+// 금융소득 분리과세 세율 (원천징수)
+const FINANCIAL_WITHHOLDING_RATE = 0.154; // 14% + 지방세 1.4%
+
+// 금융소득 종합과세 기준 (연 2,000만원 초과)
+const FINANCIAL_GLOBAL_THRESHOLD = 20000000;
+
 export function calculateIncomeDeduction(annualIncome: number): number {
   if (annualIncome <= 5000000) return annualIncome;
   if (annualIncome <= 15000000) return 5000000 + (annualIncome - 5000000) * 0.4;
@@ -75,6 +90,18 @@ export function calculateIncomeTax(taxableIncome: number): number {
 
 export function calculateTax(input: UserInput): TaxResult {
   const annualIncome = input.monthlyIncome * 12;
+  const financialIncome = (input.annualInterestIncome || 0) + (input.annualDividendIncome || 0);
+  const isFinancialIncomeSubjectToGlobal = financialIncome > FINANCIAL_GLOBAL_THRESHOLD;
+
+  // 금융소득 원천징수세 (2,000만원 이하 분리과세분)
+  const financialIncomeWithheld = isFinancialIncomeSubjectToGlobal
+    ? FINANCIAL_GLOBAL_THRESHOLD * FINANCIAL_WITHHOLDING_RATE
+    : financialIncome * FINANCIAL_WITHHOLDING_RATE;
+
+  // 종합과세 대상 금융소득 (2,000만원 초과분)
+  const financialIncomeForGlobal = isFinancialIncomeSubjectToGlobal
+    ? financialIncome - FINANCIAL_GLOBAL_THRESHOLD
+    : 0;
 
   const incomeDeduction = calculateIncomeDeduction(annualIncome);
   const basicDeduction = 1500000;
@@ -82,19 +109,37 @@ export function calculateTax(input: UserInput): TaxResult {
   const dependentDeduction = input.dependents * 1500000;
   const nationalPensionDeduction = Math.min(annualIncome * 0.045, 2700000);
 
-  const taxableIncome = Math.max(
+  // 근로소득 과세표준
+  const laborTaxableIncome = Math.max(
     0,
     annualIncome - incomeDeduction - basicDeduction - spouseDeduction -
     dependentDeduction - nationalPensionDeduction
   );
 
-  const incomeTax = calculateIncomeTax(taxableIncome);
+  // 종합과세 시: 근로소득 + 초과 금융소득 합산
+  const totalTaxableIncome = laborTaxableIncome + financialIncomeForGlobal;
+
+  const incomeTax = calculateIncomeTax(totalTaxableIncome);
+
+  // 금융소득 종합과세 추가세 계산 (비교과세: 근로소득세 + 금융소득×14% vs 합산세율 중 큰 값)
+  let financialIncomeSurcharge = 0;
+  if (isFinancialIncomeSubjectToGlobal) {
+    const taxWithGlobal = calculateIncomeTax(totalTaxableIncome);
+    const taxWithoutGlobal = calculateIncomeTax(laborTaxableIncome);
+    const globalExcess = financialIncomeForGlobal * 0.14;
+    // 비교과세: 합산세액과 (근로세액 + 14%세액) 중 큰 값
+    const comparisonTax = taxWithoutGlobal + globalExcess;
+    financialIncomeSurcharge = Math.max(0, Math.max(taxWithGlobal, comparisonTax) - taxWithoutGlobal) * 1.1;
+  }
+
+  const financialIncomeTax = financialIncomeWithheld + financialIncomeSurcharge;
+
   const localTax = incomeTax * 0.1;
   const totalTax = incomeTax + localTax;
-  const effectiveTaxRate = annualIncome > 0 ? totalTax / annualIncome : 0;
+  const effectiveTaxRate = annualIncome > 0 ? (totalTax + financialIncomeTax) / (annualIncome + financialIncome) : 0;
 
   const nationalPension = Math.min(annualIncome * 0.045 / 12, 225000);
-  const healthInsurance = Math.min(annualIncome * 0.03545 / 12, 3000000 / 12);
+  const healthInsurance = Math.min(annualIncome * 0.03545 / 12, 250000);
   const employmentInsurance = annualIncome * 0.009 / 12;
   const totalMonthlyDeductions = totalTax / 12 + nationalPension + healthInsurance + employmentInsurance;
   const netMonthlyIncome = input.monthlyIncome - totalMonthlyDeductions;
@@ -105,7 +150,7 @@ export function calculateTax(input: UserInput): TaxResult {
     basicDeduction,
     spouseDeduction,
     dependentDeduction,
-    taxableIncome,
+    taxableIncome: totalTaxableIncome,
     incomeTax,
     localTax,
     totalTax,
@@ -115,6 +160,11 @@ export function calculateTax(input: UserInput): TaxResult {
     employmentInsurance,
     totalDeductions: totalMonthlyDeductions,
     netMonthlyIncome,
+    financialIncome,
+    isFinancialIncomeSubjectToGlobal,
+    financialIncomeTax,
+    financialIncomeWithheld,
+    financialIncomeSurcharge,
   };
 }
 
@@ -131,12 +181,10 @@ export function calculatePensionStrategy(input: UserInput, taxResult: TaxResult)
 
   const irpTaxSaving = irpContribution * marginalRate * 1.1;
   const pensionSavingsTaxSaving = pensionSavingsContribution * 0.165;
-
   const taxSaving = Math.min(irpTaxSaving + pensionSavingsTaxSaving, irpContribution * 0.165 + pensionSavingsContribution * 0.165);
 
-  const totalContribution = irpContribution + pensionSavingsContribution + input.existingPension * 12;
   const yearsToRetirement = Math.max(0, 65 - input.age);
-  const expectedMonthlyPension = (totalContribution * yearsToRetirement * 1.03) / (20 * 12);
+  const expectedMonthlyPension = ((irpContribution + pensionSavingsContribution + input.existingPension * 12) * yearsToRetirement * 1.03) / (20 * 12);
 
   return {
     irpContribution,
@@ -148,7 +196,7 @@ export function calculatePensionStrategy(input: UserInput, taxResult: TaxResult)
   };
 }
 
-function getMarginalTaxRate(taxableIncome: number): number {
+export function getMarginalTaxRate(taxableIncome: number): number {
   const bracket = INCOME_TAX_BRACKETS.find(
     b => taxableIncome > b.min && taxableIncome <= b.max
   );
@@ -158,6 +206,7 @@ function getMarginalTaxRate(taxableIncome: number): number {
 export function generateTaxSavingStrategies(input: UserInput, taxResult: TaxResult): TaxSavingStrategy[] {
   const marginalRate = getMarginalTaxRate(taxResult.taxableIncome);
   const annualIncome = taxResult.annualIncome;
+  const financialIncome = taxResult.financialIncome;
   const strategies: TaxSavingStrategy[] = [];
 
   const irpMax = 9000000;
@@ -188,13 +237,36 @@ export function generateTaxSavingStrategies(input: UserInput, taxResult: TaxResu
   const isaRecommended = Math.min(isaMax, input.monthlySavings * 12 * 0.5);
   strategies.push({
     name: 'ISA(개인종합자산관리계좌)',
-    description: '비과세 한도 200만원(서민형 400만원), 초과분 9.9% 분리과세',
+    description: '비과세 한도 200만원(서민형 400만원), 초과분 9.9% 분리과세. 금융소득 종합과세 분산 효과',
     maxAmount: isaMax,
     recommendedAmount: isaRecommended,
     taxSaving: Math.min(200000 * 0.154, isaRecommended * 0.01),
     category: 'deduction',
     priority: 3,
   });
+
+  // 금융소득 종합과세 대상일 때 추가 전략
+  if (taxResult.isFinancialIncomeSubjectToGlobal) {
+    strategies.push({
+      name: '금융소득 분산 (가족 계좌)',
+      description: `현재 금융소득 ${(financialIncome / 10000).toFixed(0)}만원으로 종합과세 대상입니다. 배우자/가족 계좌로 분산하면 인당 2,000만원 기준으로 분리과세 가능`,
+      maxAmount: financialIncome,
+      recommendedAmount: Math.max(0, financialIncome - FINANCIAL_GLOBAL_THRESHOLD),
+      taxSaving: taxResult.financialIncomeSurcharge,
+      category: 'deduction',
+      priority: 2,
+    });
+
+    strategies.push({
+      name: '비과세 금융상품 활용',
+      description: '장기저축성보험(10년↑), 조합 예탁금(3,000만원 한도), 농특세 비과세 등 금융소득 총액 자체를 줄이는 방법',
+      maxAmount: financialIncome,
+      recommendedAmount: Math.min(30000000, financialIncome * 0.3),
+      taxSaving: Math.min(30000000, financialIncome * 0.3) * 0.154,
+      category: 'deduction',
+      priority: 3,
+    });
+  }
 
   if (annualIncome <= 120000000) {
     strategies.push({
@@ -230,3 +302,6 @@ export function generateTaxSavingStrategies(input: UserInput, taxResult: TaxResu
 
   return strategies.sort((a, b) => a.priority - b.priority);
 }
+
+// 금융소득 종합과세 기준액 (외부 참조용)
+export { FINANCIAL_GLOBAL_THRESHOLD };

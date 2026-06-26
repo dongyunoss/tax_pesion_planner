@@ -22,6 +22,8 @@ const DEFAULT_INPUT: UserInput = {
   monthlySavings: 500000,
   existingPension: 0,
   employmentType: 'employee',
+  annualInterestIncome: 0,
+  annualDividendIncome: 0,
 };
 
 const TABS = [
