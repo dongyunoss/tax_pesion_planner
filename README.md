@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏦 스마트 절세·연금 플래너
 
-## Getting Started
+월급과 현금흐름을 입력하면 **최적의 절세 전략**과 **연금 설계**를 자동으로 제시해주는 웹 서비스입니다.
 
-First, run the development server:
+## 주요 기능
+
+### 💰 세금 분석
+- 2024년 세법 기준 소득세 자동 계산 (8구간 누진세율)
+- 4대보험 자동 산출 (국민연금·건강보험·고용보험)
+- 근로소득공제, 기본공제, 배우자/부양가족 공제 적용
+- 실효세율 및 월 실수령액 즉시 확인
+
+### 🎯 절세 전략
+- **IRP (개인형 퇴직연금)** – 연 최대 900만원, 최대 16.5% 세액공제
+- **연금저축** – 연 최대 600만원 세액공제
+- **ISA** – 비과세·분리과세 혜택
+- 신용카드 소득공제, 의료비/교육비 세액공제 등
+- 소득 구간별 맞춤 우선순위 제공
+
+### 🏗️ 연금 설계
+- 국민연금 → IRP → 연금저축/ISA **3층 연금 구조** 시각화
+- 65세 예상 월 연금 수령액 계산
+- 나이별 연금 자산 성장 추이 차트
+
+### 📈 현금흐름 분석
+- 소득 → 세금 → 생활비 → 연금 → 잉여 단계별 분해
+- 재정 건강도 진단 (양호 / 보통 / 주의)
+- 지출 항목별 비율 시각화
+
+## 시작하기
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+브라우저에서 [http://localhost:3000](http://localhost:3000) 접속
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 기술 스택
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| 항목 | 기술 |
+|------|------|
+| 프레임워크 | Next.js 16 (App Router) |
+| 언어 | TypeScript |
+| 스타일 | Tailwind CSS v4 |
+| 차트 | Recharts |
 
-## Learn More
+## 프로젝트 구조
 
-To learn more about Next.js, take a look at the following resources:
+```
+├── app/
+│   ├── page.tsx          # 메인 페이지
+│   ├── layout.tsx
+│   └── globals.css
+├── components/
+│   ├── InputForm.tsx     # 소득·나이 등 입력 폼
+│   ├── TaxSummary.tsx    # 세금 분석 결과
+│   ├── TaxStrategies.tsx # 절세 전략 목록
+│   ├── PensionPlan.tsx   # 연금 설계 차트
+│   └── CashflowPanel.tsx # 월간 현금흐름
+└── lib/
+    └── taxCalculator.ts  # 세금·연금 계산 로직
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 주의사항
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> 본 서비스는 **참고용**이며 2024년 세법 기준으로 계산됩니다.  
+> 실제 세액은 개인 상황에 따라 다를 수 있으니 세무사 상담을 권장합니다.
